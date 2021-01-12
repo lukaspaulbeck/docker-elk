@@ -57,3 +57,28 @@ if [[ $count -ne 1 ]]; then
 	echo "Expected 1 document, got ${count}"
 	exit 1
 fi
+
+log 'Ensuring the Search Guard Kibana plugin is enabled'
+response="$(curl "http://${ip_kb}:5601/api/v1/searchguard/kibana_config" -s -u readall:readall)"
+echo "$response"
+enabled="$(jq -rn --argjson data "${response}" '$data.searchguard.enabled')"
+if [[ $enabled != 'true' ]]; then
+	echo 'The Search Guard Kibana plugin is disabled'
+	exit 1
+fi
+
+log 'Ensuring the Search Guard configuration GUI is accessible to the admin user'
+declare -a endpoints=(
+	/_searchguard/api/actiongroups/
+	/_searchguard/api/internalusers/
+	/_searchguard/api/roles/
+	/_searchguard/api/rolesmapping/
+)
+declare -i response_code
+for endpoint in "${endpoints[@]}"; do
+	response_code="$(curl "http://${ip_es}:9200${endpoint}" -s -o /dev/null -w '%{http_code}' -u admin:admin)"
+	if ((response_code != 200)); then
+		echo "Failed to query endpoint ${endpoint} (code: ${response_code})"
+		exit 1
+	fi
+done
